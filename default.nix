@@ -5,7 +5,7 @@
         nativeBuildInputs = [ clojure git cacert ];
         outputHashAlgo = null;
         outputHashMode = "recursive";
-        hash = "sha256-PzBr8C5OmsCk28bnvUe0xFO9iKdZCtip7TrqETHM+UA=";
+        outputHash = "sha256-PzBr8C5OmsCk28bnvUe0xFO9iKdZCtip7TrqETHM+UA=";
         preferLocalBuild = false;
         unpackPhase = ''
             cp $src deps.edn
