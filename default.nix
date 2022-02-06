@@ -1,54 +1,75 @@
-{ pkgs, cacert, mkYarnPackage, electron_15, clojure, curl, nodejs, openjdk11, makeWrapper, git }: let
-    clojureDeps = pkgs.stdenvNoCC.mkDerivation {
-        name = "deps";
-        src = ./deps.edn;
-        nativeBuildInputs = [ clojure git cacert ];
-        outputHashAlgo = null;
-        outputHashMode = "recursive";
-        outputHash = "sha256-SqhckofXrUTz9eq3o+d7iYVhj9kiCb6aXYR8fbHz0/U=";
-        preferLocalBuild = false;
-        unpackPhase = ''
-            cp $src deps.edn
-        '';
-        buildPhase = ''
-            mkdir build
-            mv deps.edn build
-            cd build
-            export HOME=$PWD
-            clojure -P
-        '';
-        installPhase = ''
-            cd ..
-            mv build $out
-        '';
-    };
-    # classp  = clojureDeps.makeClasspaths {};
-in clojureDeps
-# mkYarnPackage rec {
-#     pname = "logseq";
-#     src = ./.;
+{ pkgs, cacert, mkYarnPackage, electron_15, clojure, curl, nodejs, openjdk11, makeWrapper, git }:
+let
+  clojureDeps = pkgs.runCommand "deps"
+    {
+      nativeBuildInputs = [ clojure git cacert ];
+      outputHashAlgo = null;
+      outputHashMode = "recursive";
+      outputHash = "sha256-gj/2b+Fk9GLz0qfeIG5YWhN4GUnWeL3jlq1y5ZA5lcU=";
+    } ''
+    cd $TMPDIR
+    mkdir -p build
+    mkdir -p home
+    export HOME=$PWD/home
 
-#     yarnPreBuild = ''
-#         mkdir -p $TMPDIR/home
-#         export ELECTRON_SKIP_BINARY_DOWNLOAD=1
-#     '';
-#     buildPhase = ''
-#         export HOME=$TMPDIR/home
-#         echo ${clojureDeps}
+    pushd build
+    cp ${./deps.edn} deps.edn
+    clojure -P
+    popd
 
-#         # requires nodejs
-#         clojure -M:cljs release worker-parser app electron
-#     '';
+    rm -rvf .gitlibs/_repos/*/*/*/*/*
+    find .gitlibs/libs -name .git -print -delete
+    mv {.m2,.gitlibs} build
+    find ./build -name  _remote.repositories -print -delete
 
-#     yarnFlags = [ "--offline" "--production" ];
+    mkdir $out;
+    mv build home $out;
 
-#     nativeBuildInputs = [ makeWrapper clojure git openjdk11 nodejs ];
+  '';
+  # classp  = clojureDeps.makeClasspaths {};
+in
+mkYarnPackage rec {
+  pname = "logseq";
+  src = ./.;
 
-#     distPhase = ":"; # disable useless $out/tarballs directory
+  yarnPreBuild = ''
+    mkdir -p $TMPDIR/home
+    export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+  '';
+  buildPhase = ''
 
-#     postInstall = ''
-#         makeWrapper ${electron_15}/bin/electron $out/bin/logseq \
-#         --set NODE_ENV production \
-#         --add-flags $dir/build/main/main.js
-#     '';
-# }
+        ls -hal
+        echo $pwd
+        cd $TMPDIR
+        tar -xzf ${clojureDeps}
+
+        export HOME=$TMPDIR/home
+        mv build/.{gitlibs,m2} $HOME
+        ls -halR $HOME/.gitlibs
+        mv build/.cpcache $OLDPWD
+        mv build/deps.edn $OLDPWD
+
+        # requires nodejs
+        ls -hal $TMPDIR
+        echo home $HOME
+        ls -hal $HOME
+        echo oldpwd $OLDPWD
+        ls -hal $OLDPWD
+        cd $OLDPWD
+        echo $PATH
+
+        clojure -M:cljs release worker-parser app electron --offline
+    '';
+
+  yarnFlags = [ "--offline" "--production" ];
+
+  nativeBuildInputs = [ makeWrapper clojure git openjdk11 nodejs ];
+
+  distPhase = ":"; # disable useless $out/tarballs directory
+
+  postInstall = ''
+    makeWrapper ${electron_15}/bin/electron $out/bin/logseq \
+    --set NODE_ENV production \
+    --add-flags $dir/build/main/main.js
+  '';
+}
