@@ -1,5 +1,12 @@
-{ pkgs, cacert, mkYarnPackage, electron_15, clojure, curl, nodejs, openjdk11, makeWrapper, git }:
+{ pkgs, cacert, yarn2nix-moretea, mkYarnPackage, mkYarnModules, electron_15, clojure, curl, nodejs, openjdk11, makeWrapper, git }:
 let
+  version = "0.5.9";
+
+  fullCache = let
+    locks = [ ./yarn.lock ./static/yarn.lock ];
+    lockToCache = f: (pkgs.callPackage (yarn2nix-moretea.mkYarnNix { yarnLock =  f; }) {}).offline_cache;
+  in pkgs.symlinkJoin { name = "offline-deps"; paths = map lockToCache locks;};
+
   clojureDeps = pkgs.runCommand "deps"
     {
       nativeBuildInputs = [ clojure git cacert nodejs ];
@@ -29,48 +36,68 @@ let
     mv build $out
 
   '';
+  staticDeps = mkYarnPackage {
+    inherit version;
+    pname = "logseq-static";
+    src = ./static;
+    offlineCache = fullCache;
+    buildPhase = ":";
+    distPhase = ":";
+    yarnPreBuild = ''
+        echo preBuild!
+        export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+        export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+        export PATH=$PATH:${pkgs.lib.makeBinPath [ pkgs.nodePackages.node-gyp-build ] }
+        export DUGITE_CACHE_DIR=$(pwd)/test
+    '';
+    extraBuildInputs = [ pkgs.nodePackages.node-gyp-build ];
+    packageJSON = ./resources/package.json;
+    yarnLock = ./static/yarn.lock;
+    yarnFlags = [ "--pure-lockfile" "--offline" ];
+  };
   # classp  = clojureDeps.makeClasspaths {};
-in
-mkYarnPackage rec {
+package = mkYarnPackage rec {
   pname = "logseq";
   src = ./.;
+  offlineCache = fullCache;
 
   yarnPreBuild = ''
-    mkdir -p $TMPDIR/home
     export ELECTRON_SKIP_BINARY_DOWNLOAD=1
     export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
   '';
   buildPhase = ''
+    export HOME=$TMPDIR/home
+    mkdir -p $HOME
 
-        export HOME=$TMPDIR/home
-        mkdir -p $HOME
+    cp -r ${clojureDeps}/.clojure $HOME
+    chmod -R a+rw $HOME/.clojure
 
-        cp -r ${clojureDeps}/.clojure $HOME
-        chmod -R a+rw $HOME/.clojure
+    cp -r ${clojureDeps}/.{gitlibs,m2} $TMPDIR
+    chmod -R a+rw $TMPDIR/.{gitlibs,m2}
 
-        cp -r ${clojureDeps}/.{gitlibs,m2} $TMPDIR
-        chmod -R a+rw $TMPDIR/.{gitlibs,m2}
+    pushd deps/logseq
+    cp -r ${clojureDeps}/build/.cpcache .
+    chmod -R a+rw .cpcache
 
-        cp -r $src build
-        chmod -R a+rw build
-        ln -s ../node_modules -t build
-        cd build
+    # now for the magic trick
+    mv node_modules node_modules_min
+    ln -s ../../node_modules -t .
+    clojure -Scp $(cat ${clojureDeps}/build/classpath) -M:cljs -v release parser-worker app electron
 
-        cp -rv ${clojureDeps}/build/.cpcache ./
-        chmod -R a+rw .cpcache
+    popd
+  '';
 
-        cp ${./deps.edn} ./deps.edn
-
-        clojure -Scp $(cat ${clojureDeps}/build/classpath) -M:cljs release parser-worker app electron
-    '';
-
-  nativeBuildInputs = [ makeWrapper pkgs.chromium clojure git openjdk11 nodejs ];
+  nativeBuildInputs = [ makeWrapper clojure git openjdk11 nodejs ];
 
   distPhase = ":"; # disable useless $out/tarballs directory
 
   postInstall = ''
+    ls ${staticDeps}
     makeWrapper ${electron_15}/bin/electron $out/bin/logseq \
     --set NODE_ENV production \
     --add-flags $dir/build/main/main.js
   '';
+};
+in {
+  inherit package staticDeps clojureDeps;
 }

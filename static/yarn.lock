@@ -1535,7 +1535,7 @@ dir-compare@^2.4.0:
   integrity sha512-l9hmu8x/rjVC9Z2zmGzkhOEowZvW7pmYws5CWHutg8u1JgvsKWMx7Q/UODeu4djLZ4FgW5besw5yvMQnBHzuCA==
   dependencies:
     buffer-equal "1.0.0"
-    colors "1.0.3"
+    colors "1.4.0"
     commander "2.9.0"
     minimatch "3.0.4"
 

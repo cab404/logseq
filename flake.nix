@@ -10,7 +10,8 @@
     # clj2nixBin = clj2nix.defaultPackage.${system};
     in
     {
-      defaultPackage = pkgs.callPackage ./. { };
+      packages = pkgs.callPackage ./. { };
+      nixpkgs = pkgs;
     });
 
 }
